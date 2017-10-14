@@ -23,13 +23,14 @@
 // • The real uid of the executing process can write the file destination.
 
 int debug = 1;
-DIR* ACL; //global to make closing them easier
-DIR* src;
-DIR* dest;
+FILE* acl; //global to make closing them easier
+FILE* src;
+FILE* dst;
 
 void silentlyClose() {
-	if (src) { closedir(src); }
-	if (dest) { closedir(dest); }
+	if (acl) {fclose(acl); }
+	if (src) { fclose(src); }
+	if (dst) { fclose(dst); }
 	exit(1);
 }
 
@@ -43,21 +44,32 @@ int writable(char* path) {
 	else return 0;
 }
 
-void getFile(char* path, char* name) {
+FILE* getFile(char* path, char* name) {
+	FILE* fptr = fopen(path, "r");
+	if (fptr == NULL) {
+		if (debug) fprintf(stderr, "%s is not valid\n", name);
+		silentlyClose();
+	}
+	return fptr;
+}
+
+DIR* getDir(char* path) {
 	struct stat file_info;
 	DIR* dir = opendir(path);
+	if (!dir) printf("aaaa\n");
 	if (!dir || (lstat(path, &file_info) == -1)) {
-			if (debug) fprintf(stderr, "\n%s is not valid\n\n", name);
+			if (debug) fprintf(stderr, "Destination is not valid\n");
 			silentlyClose();
 	}
+	return dir;
 }
 
 int main(int argc, char* argv[]) {
 	uid_t ruid = getuid(); // regular user: person running program
 	uid_t euid = geteuid(); // effective user: person who owns program
 	// seteuid(ruid); // de-escalate privileges
-	printf("ruid: %i\n", ruid);
-	printf("euid: %i\n", euid);
+	if (debug) printf("ruid: %i\n", ruid);
+	if (debug) printf("euid: %i\n", euid);
 
 	//Check num of params
 	if (argc != 3) {
@@ -65,12 +77,25 @@ int main(int argc, char* argv[]) {
 		exit(1);
 	}
 
-	//Open files given by user
-	getFile(argv[1], "Source");
-	//if (readable(argv[1])) printf("readable\n");
-	//if (writable(argv[1])) printf("writable\n");
-	getFile(argv[2], "Destination");
+
+	char* aclPath = strcat(argv[1], ".access");
+	char rights, user[128], buffer[256]; // max 256/line and 128/name
+	// printf("%s\n", aclPath);
+	acl = getFile(aclPath, "acl");
+	while (fgets(buffer, 257, acl) != NULL) { // read each line
+			fscanf(acl, "%s %c", user, &rights); // get data from line
+			if (strcmp(user, "#")) { // not a commented line
+				if (debug) printf("user: %s\tpermissions: %c\n", user, rights);
+			}
+	}
+
+	src = getFile(argv[1], "src");
+	dst = getFile(argv[2], "dst");
+
+
 
 	if (debug) printf("Success\n");
 	silentlyClose();
 }
+
+//will want sendfile
