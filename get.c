@@ -4,8 +4,8 @@
 
 #define _BSD_SOURCE //for lstat
 #include <unistd.h>
-#include <dirent.h>
 #include <sys/stat.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -22,7 +22,7 @@
 // • The effective uid of the executing process has read access to source, the file source.access exists and indicates read access for the real uid of the executing process,
 // • The real uid of the executing process can write the file destination.
 
-
+int debug = 1;
 DIR* src; //global to make closing them easier
 DIR* dest;
 
@@ -32,30 +32,43 @@ void silentlyClose() {
 	exit(1);
 }
 
-int checkFile(DIR* file, char* name) {
-	// struct stat fileWithPath;
-	// struct dirent* entry;
-	// DIR* dir;
-	if (!file) {
-			fprintf(stderr, "\n%s is not valid\n\n", name);
+int readable(char* path) {
+	if (!access(path, R_OK)) return 1;
+	else return 0;
+}
+
+int writable(char* path) {
+	if (!access(path, W_OK)) return 1;
+	else return 0;
+}
+
+void getFile(char* path, char* name) {
+	struct stat file_info;
+	DIR* dir = opendir(path);
+	if (!dir || (lstat(path, &file_info) == -1)) {
+			if (debug) fprintf(stderr, "\n%s is not valid\n\n", name);
 			silentlyClose();
 	}
-	return 0;
 }
 
 int main(int argc, char* argv[]) {
+	uid_t ruid = getuid(); // regular user: person running program
+	uid_t euid = geteuid(); // effective user: person who owns program
+	seteuid(ruid); // de-escalate privileges
+
 	//Check num of params
 	if (argc != 3) {
-		fprintf(stderr, "\nInput:   ./get <source> <destination>\n\n");
+		if (debug) fprintf(stderr, "\nInput:   ./get <source> <destination>\n\n");
 		exit(1);
 	}
 
 	//Open files given by user
-	src = opendir(argv[1]);
-	checkFile(src, "Source");
-	dest = opendir(argv[2]);
-	checkFile(dest, "Destination");
+	getFile(argv[1], "Source");
+	if (readable(argv[1])) printf("readable\n");
+	if (writable(argv[1])) printf("writable\n");
+	getFile(argv[2], "Destination");
 
-	printf("Made it to the end!\n");
+	if (debug) printf("Success\n");
+	silentlyClose();
 	return 0;
 }
