@@ -15,3 +15,7 @@
 // • Existence of a malformed entry
 // • basename.ext is not an ordinary file
 // • Protection for basename.ext.access allows any world or group access (via the standard UNIX file protections)
+
+int main(int argc, char* argv[]) {
+  return 0;
+}

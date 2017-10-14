@@ -1,4 +1,4 @@
-//Author: Doren Proctor
+	//Author: Doren Proctor
 //Created for CS483 - Appled Systems Security
 //Due Oct 13, 2017
 
@@ -23,7 +23,8 @@
 // • The real uid of the executing process can write the file destination.
 
 int debug = 1;
-DIR* src; //global to make closing them easier
+DIR* ACL; //global to make closing them easier
+DIR* src;
 DIR* dest;
 
 void silentlyClose() {
@@ -54,7 +55,9 @@ void getFile(char* path, char* name) {
 int main(int argc, char* argv[]) {
 	uid_t ruid = getuid(); // regular user: person running program
 	uid_t euid = geteuid(); // effective user: person who owns program
-	seteuid(ruid); // de-escalate privileges
+	// seteuid(ruid); // de-escalate privileges
+	printf("ruid: %i\n", ruid);
+	printf("euid: %i\n", euid);
 
 	//Check num of params
 	if (argc != 3) {
@@ -64,11 +67,10 @@ int main(int argc, char* argv[]) {
 
 	//Open files given by user
 	getFile(argv[1], "Source");
-	if (readable(argv[1])) printf("readable\n");
-	if (writable(argv[1])) printf("writable\n");
+	//if (readable(argv[1])) printf("readable\n");
+	//if (writable(argv[1])) printf("writable\n");
 	getFile(argv[2], "Destination");
 
 	if (debug) printf("Success\n");
 	silentlyClose();
-	return 0;
 }
