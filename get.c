@@ -12,7 +12,7 @@
 #include <pwd.h>
 #include <sys/types.h>
 #include <errno.h>
-
+#include <fcntl.h>
 // Fails *silently* when any of these are true:
 // • ACL file does not exist
 // • ACL file is a symbolic link
@@ -37,14 +37,14 @@ void silentlyClose() {
 	exit(1);
 }
 
-int readable(char* path) {
-	if (!access(path, R_OK)) return 1;
-	else return 0;
-}
-
-int writable(char* path) {
-	if (!access(path, W_OK)) return 1;
-	else return 0;
+// int readable(char* path) {
+// 	if (!access(path, R_OK)) return 1;
+// 	else return 0;
+// }
+//
+// int writable(char* path) {
+// 	if (!access(path, W_OK)) return 1;
+// 	else return 0;
 }
 
 FILE* getFile(char* path, char* name) {
@@ -56,19 +56,38 @@ FILE* getFile(char* path, char* name) {
 	return fptr;
 }
 
-DIR* getDir(char* path) {
-	struct stat file_info;
-	DIR* dir = opendir(path);
-	if (!dir || (lstat(path, &file_info) == -1)) {
-			if (debug) fprintf(stderr, "Destination is not valid\n");
-			silentlyClose();
+FILE* getSource(char* path) {
+	FILE* fptr = fopen(path, "r");
+	if (fptr == NULL) {
+		if (debug) fprintf(stderr, "Source is not valid\n");
+		silentlyClose();
 	}
-	return dir;
+	return fptr;
 }
+
+FILE* getDest(char* path) {
+	FILE* fptr = open(path, O_WRONLY | O_CREAT);
+	if (fptr == -1) {
+		if (debug) fprintf(stderr, "Destination is not valid\n");
+		silentlyClose();
+	}
+	return fptr;
+}
+
+// DIR* getDir(char* path) {
+// 	struct stat file_info;
+// 	DIR* dir = opendir(path);
+// 	if (!dir || (lstat(path, &file_info) == -1)) {
+// 			if (debug) fprintf(stderr, "Destination is not valid\n");
+// 			silentlyClose();
+// 	}
+// 	return dir;
+// }
 
 char readAcl(char* path, char* username) { //returns your permission from acl
 	char rights, user[128], buffer[256]; // max 256/line and 128/name
 	acl = fopen(path, "r");
+	printf("GETUID(): %i\n", getuid());
 	if (acl == NULL) {
 		if (debug) fprintf(stderr, "acl file is not valid\n");
 		silentlyClose();
@@ -77,9 +96,9 @@ char readAcl(char* path, char* username) { //returns your permission from acl
 			// printf("|| %s\n", buffer);
 			fscanf(acl, "%s %c", user, &rights); // get data from line
 			if (strcmp(user, "#")) { // not a commented line
-				if (debug) printf("user: %s\tpermissions: %c\n", user, rights);
+				if (debug>1)  printf("user: %s\tpermissions: %c\n", user, rights);
 				if (!strcmp(user, username)) {
-					if (debug) printf("Username matches '%s'\n", user);
+					printf("Username matches '%s'\n", user);
 					break;
 				}
 			}
@@ -91,23 +110,28 @@ char readAcl(char* path, char* username) { //returns your permission from acl
 int main(int argc, char* argv[]) {
 	const uid_t ruid = getuid(); // regular user: person running program
 	const uid_t euid = geteuid(); // effective user: person who owns program
-	printf("euid: %i, ruid: %i\n", euid, ruid);
-	if (seteuid(ruid) < 0) {
+	if (debug) printf("euid: %i, ruid: %i\n", euid, ruid);
+
+	if (setuid(euid) < 0) {
 		printf("seteuid failed\n");
 	}
-	printf("GETEUID(): %i\n", geteuid());
-	printf("euid: %i, ruid: %i\n", euid, ruid);
-	if (seteuid(ruid) < 0) {
-		printf("seteuid failed\n");
-	}
-	printf("euid: %i, ruid: %i\n", euid, ruid);
+
+	if (debug) printf("GETUID(): %i\n", geteuid());
+	// if (setuid(ruid) < 0) {
+	// 	printf("seteuid failed\n");
+	// }
+	// printf("euid: %i, ruid: %i\n", euid, ruid);
+	// if (seteuid(ruid) < 0) {
+	// 	printf("seteuid failed\n");
+	// }
+	// printf("euid: %i, ruid: %i\n", euid, ruid);
 
 
 	char* username;
 	struct passwd* pw = getpwuid(ruid);
 	if (pw) {
 		username = pw->pw_name;
-		if (debug) printf("Your username is: %s\n", username);
+		if (debug>1) printf("Your username is: %s\n", username);
 	}
 	else if (debug)  {
 		fprintf(stderr, "Couldn't get your username\n");
@@ -138,8 +162,10 @@ int main(int argc, char* argv[]) {
 	// }
 
 	readAcl(aclPath, username);
-	src = getFile(argv[1], "src");
-	dst = getFile(argv[2], "dst");
+	// src = getFile(argv[1], "src");
+	// dst = getFile(argv[2], "dst");
+		src = getSource(argv[1]);
+		dst = getDest(argv[2]);
 
 
 
