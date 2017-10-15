@@ -9,6 +9,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <pwd.h>
+#include <sys/types.h>
+#include <errno.h>
 
 // Fails *silently* when any of these are true:
 // • ACL file does not exist
@@ -28,9 +31,9 @@ FILE* src;
 FILE* dst;
 
 void silentlyClose() {
-	if (acl) {fclose(acl); }
-	if (src) { fclose(src); }
-	if (dst) { fclose(dst); }
+	if (acl) fclose(acl);
+	if (src) fclose(src);
+	if (dst) fclose(dst);
 	exit(1);
 }
 
@@ -56,7 +59,6 @@ FILE* getFile(char* path, char* name) {
 DIR* getDir(char* path) {
 	struct stat file_info;
 	DIR* dir = opendir(path);
-	if (!dir) printf("aaaa\n");
 	if (!dir || (lstat(path, &file_info) == -1)) {
 			if (debug) fprintf(stderr, "Destination is not valid\n");
 			silentlyClose();
@@ -64,31 +66,78 @@ DIR* getDir(char* path) {
 	return dir;
 }
 
+char readAcl(char* path, char* username) { //returns your permission from acl
+	char rights, user[128], buffer[256]; // max 256/line and 128/name
+	acl = fopen(path, "r");
+	if (acl == NULL) {
+		if (debug) fprintf(stderr, "acl file is not valid\n");
+		silentlyClose();
+	}
+	while (fgets(buffer, 257, acl) != NULL) { // read each line
+			// printf("|| %s\n", buffer);
+			fscanf(acl, "%s %c", user, &rights); // get data from line
+			if (strcmp(user, "#")) { // not a commented line
+				if (debug) printf("user: %s\tpermissions: %c\n", user, rights);
+				if (!strcmp(user, username)) {
+					if (debug) printf("Username matches '%s'\n", user);
+					break;
+				}
+			}
+	}
+	if (debug) printf("Rights: %c\n", rights);
+	return rights;
+}
+
 int main(int argc, char* argv[]) {
-	uid_t ruid = getuid(); // regular user: person running program
-	uid_t euid = geteuid(); // effective user: person who owns program
-	// seteuid(ruid); // de-escalate privileges
-	if (debug) printf("ruid: %i\n", ruid);
-	if (debug) printf("euid: %i\n", euid);
+	const uid_t ruid = getuid(); // regular user: person running program
+	const uid_t euid = geteuid(); // effective user: person who owns program
+	printf("euid: %i, ruid: %i\n", euid, ruid);
+	if (seteuid(ruid) < 0) {
+		printf("seteuid failed\n");
+	}
+	printf("GETEUID(): %i\n", geteuid());
+	printf("euid: %i, ruid: %i\n", euid, ruid);
+	if (seteuid(ruid) < 0) {
+		printf("seteuid failed\n");
+	}
+	printf("euid: %i, ruid: %i\n", euid, ruid);
+
+
+	char* username;
+	struct passwd* pw = getpwuid(ruid);
+	if (pw) {
+		username = pw->pw_name;
+		if (debug) printf("Your username is: %s\n", username);
+	}
+	else if (debug)  {
+		fprintf(stderr, "Couldn't get your username\n");
+		silentlyClose();
+	}
+
+
+	// if (debug) printf("ruid: %i\n", ruid);
+	// if (debug) printf("euid: %i\n", euid);
 
 	//Check num of params
 	if (argc != 3) {
 		if (debug) fprintf(stderr, "\nInput:   ./get <source> <destination>\n\n");
 		exit(1);
-	}
 
+	}
 
 	char* aclPath = strcat(argv[1], ".access");
-	char rights, user[128], buffer[256]; // max 256/line and 128/name
 	// printf("%s\n", aclPath);
-	acl = getFile(aclPath, "acl");
-	while (fgets(buffer, 257, acl) != NULL) { // read each line
-			fscanf(acl, "%s %c", user, &rights); // get data from line
-			if (strcmp(user, "#")) { // not a commented line
-				if (debug) printf("user: %s\tpermissions: %c\n", user, rights);
-			}
-	}
 
+	// char rights, user[128], buffer[256]; // max 256/line and 128/name
+	// acl = getFile(aclPath, "acl");
+	// while (fgets(buffer, 257, acl) != NULL) { // read each line
+	// 		fscanf(acl, "%s %c", user, &rights); // get data from line
+	// 		if (strcmp(user, "#")) { // not a commented line
+	// 			if (debug) printf("user: %s\tpermissions: %c\n", user, rights);
+	// 		}
+	// }
+
+	readAcl(aclPath, username);
 	src = getFile(argv[1], "src");
 	dst = getFile(argv[2], "dst");
 
