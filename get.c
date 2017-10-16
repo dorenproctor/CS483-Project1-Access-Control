@@ -99,36 +99,20 @@ char readAcl(char* path, char* username) { //returns your permission from acl
 int main(int argc, char* argv[]) {
 	char* srcPath = argv[1];
 	char* destPath = argv[2];
-	const uid_t ruid = getuid(); // regular user: person running program
-
-	// const uid_t euid = geteuid(); // effective user: person who owns program
-	// if (debug) printf("Initial euid: %i, ruid: %i\n", euid, ruid);
-	// if (setuid(euid) < 0) {
-	// 	printf("seteuid failed\n");
-	// }
-	// if (debug) printf("getuid() after setuid(): %i\n", getuid());
-
-	char* username;
-	struct passwd* pw = getpwuid(ruid);
-	if (pw) {
-		username = pw->pw_name;
-		if (debug>1) printf("Your username is: %s\n", username);
-	}
-	else if (debug)  {
-		fprintf(stderr, "Couldn't get your username\n");
-		closeFailure();
-	}
+	const uid_t uid = getuid();
+	const uid_t euid = geteuid();
+	if (debug) printf("Initial euid: %i, uid: %i\n", euid, uid);
 
 	//Check num of params
 	if (argc != 3) {
 		if (debug) fprintf(stderr, "\nInput:   ./get <source> <destination>\n\n");
 		exit(1);
-
 	}
+
 	char aclPath[4096]; //max length of path in Linux
 	strcpy(aclPath, srcPath);
 	strcat(aclPath, ".access");
-	readAcl(aclPath, username);
+
 	src = getSource(srcPath);
 	struct stat aclStat, srcStat;
 	if (lstat(aclPath, &aclStat) == -1) {
@@ -157,11 +141,43 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "acl file should not give world/group access\n");
 		closeFailure();
 	}
-	// • ACL file does not exist						(Y)
-	// • ACL file is a symbolic link (Y)
-	// • Existence of a malformed entry
-	// • basename.ext is not an ordinary file
-	// • Protection for basename.ext.access allows any world or group access (via the standard UNIX file protections)
+
+
+	if (seteuid(uid) < 0) {
+		printf("seteuid failed\n");
+		closeFailure();
+	}
+	if (debug) printf("geteuid() after seteuid(): %i\n", geteuid());
+	if (seteuid(euid) < 0) {
+			printf("second seteuid failed\n");
+			closeFailure();
+	}
+	if (debug) printf("second geteuid() after seteuid(): %i\n", geteuid());
+
+
+	// Access allowed only when all of these are true:
+	// • Source is owned by the effective uid of the executing process,
+	// • The effective uid of the executing process has read access to source, the file source.access exists and indicates read access for the real uid of the executing process,
+	// • The real uid of the executing process can write the file destination.
+
+
+	if (srcStat.st_uid != geteuid()) {
+		if (debug) fprintf(stderr, "Source not owned by euid\n");
+	}
+
+
+	char* username;
+	struct passwd* pw = getpwuid(uid);
+	if (pw) {
+		username = pw->pw_name;
+		if (debug>1) printf("Your username is: %s\n", username);
+	}
+	else if (debug)  {
+		fprintf(stderr, "Couldn't get your username\n");
+		closeFailure();
+	}
+
+	readAcl(aclPath, username);
 
 
 	dst = getDest(destPath, aclStat);
@@ -172,5 +188,3 @@ int main(int argc, char* argv[]) {
 
 	closeSuccess();
 }
-
-//will want sendfile
