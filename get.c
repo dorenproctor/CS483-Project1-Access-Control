@@ -4,15 +4,17 @@
 
 #define _BSD_SOURCE //for lstat
 #include <unistd.h>
-#include <sys/stat.h>
 #include <dirent.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <pwd.h>
-#include <sys/types.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/sendfile.h>
+
 // Fails *silently* when any of these are true:
 // • ACL file does not exist
 // • ACL file is a symbolic link
@@ -27,13 +29,13 @@
 
 int debug = 1;
 FILE* acl; //global to make closing them easier
-FILE* src;
+int src;
 int dst;
 
 
 void closeSuccess() {
 	if (acl) fclose(acl);
-	if (src) fclose(src);
+	if (src) close(src);
 	if (dst) close(dst);
 	fprintf(stderr, "Success\n");
 	exit(1);
@@ -41,30 +43,30 @@ void closeSuccess() {
 
 void closeFailure() {
 	if (acl) fclose(acl);
-	if (src) fclose(src);
+	if (src) close(src);
 	if (dst) close(dst);
 	fprintf(stderr, "Failure\n");
 	exit(1);
 }
 
 
-FILE* getSource(char* path) {
-	FILE* fptr = fopen(path, "r");
-	if (fptr == NULL) {
-		if (debug) fprintf(stderr, "Source is not valid\n");
+int getSource(char* path) {
+	int fd = open(path, O_RDONLY);
+	if (fd == -1) {
+		if (debug) fprintf(stderr, "src error: %s\n", strerror(errno));
 		closeFailure();
 	}
-	return fptr;
+	return fd;
 }
 
 
-int getDest(char* path) {
-	int fptr = open(path, O_WRONLY | O_CREAT);
-	if (fptr != -1) {
-		if (debug) fprintf(stderr, "Destination is not valid\n");
+int getDest(char* path, struct stat srcPath) {
+	int fd = open(path, O_WRONLY | O_CREAT, 0600);
+	if (fd == -1) {
+		if (debug) fprintf(stderr, "dst error: %s\n", strerror(errno));
 		closeFailure();
 	}
-	return fptr;
+	return fd;
 }
 
 
@@ -91,12 +93,14 @@ char readAcl(char* path, char* username) { //returns your permission from acl
 	if ((rights != 'b') && (rights != 'w')) {
 		if (debug) fprintf(stderr, "You don't have \"w\" rights\n");
 		closeFailure();
-	}
+		}
 	return rights;
 }
 
 
 int main(int argc, char* argv[]) {
+	char* srcPath = argv[1];
+	char* destPath = argv[2];
 	const uid_t ruid = getuid(); // regular user: person running program
 
 	// const uid_t euid = geteuid(); // effective user: person who owns program
@@ -123,11 +127,23 @@ int main(int argc, char* argv[]) {
 		exit(1);
 
 	}
-
-	char* aclPath = strcat(argv[1], ".access");
+	char aclPath[4096]; //max length of path in Linux
+	strcpy(aclPath, srcPath);
+	strcat(aclPath, ".access");
+	printf("acl: %s\n", aclPath);
 	readAcl(aclPath, username);
-	src = getSource(argv[1]);
-	dst = getDest(argv[2]);
+	src = getSource(srcPath);
+	struct stat srcStat;
+	if (lstat(srcPath, &srcStat) == -1) {
+		if (debug) fprintf(stderr, "lstat says no\n");
+		closeFailure();
+	}
+	dst = getDest(destPath, srcStat);
+
+	int sentBytes = sendfile(dst, src, NULL, srcStat.st_size*sizeof(int));
+	if (sentBytes == -1) printf("sendfile error: %s\n", strerror(errno));
+	else if (debug>1) printf("sendfile: %i\n", sentBytes);
+
 
 	closeSuccess();
 }
