@@ -73,13 +73,11 @@ int getDest(char* path, struct stat srcPath) {
 char readAcl(char* path, char* username) { //returns your permission from acl
 	char rights, user[128], buffer[256]; // max 256/line and 128/name
 	acl = fopen(path, "r");
-	// printf("getuid() inside readAcl(): %i\n", getuid());
 	if (acl == NULL) {
-		if (debug) fprintf(stderr, "acl file is not valid\n");
+		if (debug) fprintf(stderr, "acl file does not exist\n");
 		closeFailure();
 	}
 	while (fgets(buffer, 257, acl) != NULL) { // read each line
-			// printf("|| %s\n", buffer);
 			fscanf(acl, "%s %c", user, &rights); // get data from line
 			if (strcmp(user, "#")) { // not a commented line
 				if (debug>1)  printf("user: %s\tpermissions: %c\n", user, rights);
@@ -132,17 +130,45 @@ int main(int argc, char* argv[]) {
 	strcat(aclPath, ".access");
 	readAcl(aclPath, username);
 	src = getSource(srcPath);
-	struct stat srcStat;
-	if (lstat(srcPath, &srcStat) == -1) {
-		if (debug) fprintf(stderr, "lstat says no\n");
+	struct stat aclStat, srcStat;
+	if (lstat(aclPath, &aclStat) == -1) {
+		if (debug) fprintf(stderr, "lstat says no to your acl\n");
 		closeFailure();
 	}
-	dst = getDest(destPath, srcStat);
+	if (lstat(srcPath, &srcStat) == -1) {
+		if (debug) fprintf(stderr, "lstat says no to your src\n");
+		closeFailure();
+	}
 
-	int sentBytes = sendfile(dst, src, NULL, srcStat.st_size*sizeof(int));
+	if S_ISLNK(aclStat.st_mode) {
+		if (debug) fprintf(stderr, "acl file is a symbolic link\n");
+		closeFailure();
+	}
+	if (!S_ISREG(srcStat.st_mode)) {
+		if (debug) fprintf(stderr, "src is not an ordinary file\n");
+		closeFailure();
+	}
+	if ((aclStat.st_mode & S_IRGRP) || // any world/group access
+	(aclStat.st_mode & S_IWGRP) ||
+	(aclStat.st_mode & S_IXGRP) ||
+	(aclStat.st_mode & S_IROTH) ||
+	(aclStat.st_mode & S_IWOTH) ||
+	(aclStat.st_mode & S_IXOTH)) {
+		fprintf(stderr, "acl file should not give world/group access\n");
+		closeFailure();
+	}
+	// • ACL file does not exist						(Y)
+	// • ACL file is a symbolic link (Y)
+	// • Existence of a malformed entry
+	// • basename.ext is not an ordinary file
+	// • Protection for basename.ext.access allows any world or group access (via the standard UNIX file protections)
+
+
+	dst = getDest(destPath, aclStat);
+
+	int sentBytes = sendfile(dst, src, NULL, aclStat.st_size*sizeof(int));
 	if (sentBytes == -1) printf("sendfile error: %s\n", strerror(errno));
 	else if (debug>1) printf("sendfile: %i\n", sentBytes);
-
 
 	closeSuccess();
 }
