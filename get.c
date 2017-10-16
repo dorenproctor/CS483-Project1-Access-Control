@@ -3,10 +3,10 @@
 //Due Oct 13, 2017
 
 #define _BSD_SOURCE //for lstat
-#include <string.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <pwd.h>
 #include <errno.h>
@@ -70,10 +70,8 @@ int getDest(char* path, struct stat srcPath) {
 }
 
 
-void readAcl(char* path, char* username) { //returns your permission from acl
-	char rights[1], user[128], buffer[256]; // max 256/line and 128/name (arbitrary)
-	// char buffer[256];
-
+char readAcl(char* path, char* username) { //returns your permission from acl
+	char rights, user[128], buffer[256]; // max 256/line and 128/name
 	acl = fopen(path, "r");
 	// printf("getuid() inside readAcl(): %i\n", getuid());
 	if (acl == NULL) {
@@ -81,47 +79,22 @@ void readAcl(char* path, char* username) { //returns your permission from acl
 		closeFailure();
 	}
 	while (fgets(buffer, 257, acl) != NULL) { // read each line
-	  char *token = strtok(buffer, " \t");
-
-		// char* user = strtok(NULL, " \t");
-		// char* rights = strtok(NULL, " \t");
-
-		int i = 0;
-		char tokens[2][256];
-	  while (token) {
-	      token = strtok(NULL, " \t");
-				printf("token: %s\n", token);
-				if (i<2) {
-					printf("Copied \'%s\' to tokens[%i]\n", token, i);
-					if (token != NULL) strcpy(tokens[i], token);
-					printf("tokens[%i]: %s\n", i, tokens[i]);
+			// printf("|| %s\n", buffer);
+			fscanf(acl, "%s %c", user, &rights); // get data from line
+			if (strcmp(user, "#")) { // not a commented line
+				if (debug>1)  printf("user: %s\tpermissions: %c\n", user, rights);
+				if (!strcmp(user, username)) {
+					if (debug>1) printf("Username matches '%s'\n", user);
+					break;
 				}
-				i++;
-	  }
-		strcpy(user, tokens[0]);
-		strcpy(rights, tokens[1]);
-		if (strcmp(user, "#")) {
-			printf("\n~~~~~~~~~~\nuser: %s\trights: %s\n~~~~~~~~~~~~\n", tokens[0], tokens[1]);\
-		}
+			}
 	}
-
-	// while (fgets(buffer, 257, acl) != NULL) { // read each line
-	// 		// printf("|| %s\n", buffer);
-	// 		fscanf(acl, "%s %c", user, &rights); // get data from line
-	// 		if (strcmp(user, "#")) { // not a commented line
-	// 			if (debug>1)  printf("user: %s\tpermissions: %c\n", user, rights);
-	// 			if (!strcmp(user, username)) {
-	// 				if (debug>1) printf("Username matches '%s'\n", user);
-	// 				break;
-	// 			}
-	// 		}
-	// }
-	if (debug>1) printf("Rights: %s\n", rights);
-	// if ((rights != 'b') && (rights != 'w')) {
-	if (strcmp(rights, "b") && strcmp(rights, "w")) {
+	if (debug>1) printf("Rights: %c\n", rights);
+	if ((rights != 'b') && (rights != 'w')) {
 		if (debug) fprintf(stderr, "You don't have \"w\" rights\n");
 		closeFailure();
 		}
+	return rights;
 }
 
 
