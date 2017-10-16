@@ -2,7 +2,6 @@
 //Created for CS483 - Appled Systems Security
 //Due Oct 13, 2017
 
-// #define _BSD_SOURCE //for lstat
 #define _GNU_SOURCE
 #include <unistd.h>
 #include <stdio.h>
@@ -27,7 +26,7 @@
 // • The real uid of the executing process can write the file destination.
 
 // global variables
-int debug = 1;
+int debug = 0;
 FILE* acl; //global to make closing them easier
 int src;
 int dst;
@@ -130,7 +129,7 @@ int main(int argc, char* argv[]) {
 		if (debug) fprintf(stderr, "lstat says no to your src\n");
 		closeFailure();
 	}
-	
+
 	dst = getDst(dstPath, aclStat);
 
 	if S_ISLNK(aclStat.st_mode) { // • ACL file is a symbolic link
