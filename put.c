@@ -14,20 +14,33 @@
 #include <sys/sendfile.h>
 
 // Fails *silently* when any of these are true:
-// • ACL file does not exist
-// • ACL file is a symbolic link
-// • Existence of a malformed entry
-// • basename.ext is not an ordinary file
-// • Protection for basename.ext.access allows any world or group access (via the standard UNIX file protections)
+// • ACL file does not exist (Y)
+// • ACL file is a symbolic link (Y)
+// • Existence of a malformed entry (Y)
+// • basename.ext is not an ordinary file (Y)
+// • Protection for basename.ext.access allows any world or group access (via the standard UNIX file protections) (Y)
 
 // Access is allowed only when all of these are true:
-// • the effective uid of the executing process owns destination,
-// • the effective uid of the executing process has write access to the file destination,
-// • the file destination.access exists and indicates write access for the real uid of the executing process,
-// and
-// • the real uid of the executing process may read source.
+// • the effective uid of the executing process owns destination (Y)
+// • the effective uid of the executing process has write access to the file destination (Y)
+// • the file destination.access exists and indicates write access for the real uid of the executing process (Y)
+// • the real uid of the executing process may read source (Y)
 
-int debug = 0;
+/*
+~~~~~~~~~~
+If destination already exists, the user is queried before the file is overwritten.
+
+If destination is overwritten, the owner and
+protections of the file are not changed by the write. If destination does not exist, it is created with the
+owner and group corresponding to the effective user of the executing process and their default group. (See
+the manual page for getpwnam().) The file protection is set to 400.
+
+fstat instead of lstat?
+~~~~~~~~~~
+*/
+
+
+int debug = 2;
 FILE* acl; //global to make closing them easier
 int src;
 int dst;
@@ -52,7 +65,7 @@ void closeFailure() {
 
 
 int getSource(char* path) {
-	int fd = open(path, O_RDONLY);
+	int fd = open(path, O_WRONLY | O_CREAT, 0600);
 	if (fd == -1) {
 		if (debug) fprintf(stderr, "src error: %s\n", strerror(errno));
 		closeFailure();
@@ -62,8 +75,8 @@ int getSource(char* path) {
 }
 
 
-int (char* path, struct stat srcPath) {
-	int fd = open(path, O_WRONLY | O_CREAT, 0600);
+int getDst(char* path, struct stat srcPath) {
+	int fd = open(path, O_RDONLY);
 	if (fd == -1) {
 		if (debug) fprintf(stderr, "dst error: %s\n", strerror(errno));
 		closeFailure();
@@ -93,8 +106,8 @@ char readAcl(char* path, char* username) { //returns your permission from acl
 	}
 	if (debug>1) printf("Permissions: %c\n", rights);
 
-	if ((rights != 'b') && (rights != 'w')) {
-		if (debug) fprintf(stderr, "You don't have \"w\" rights\n");
+	if ((rights != 'b') && (rights != 'r')) {
+		if (debug) fprintf(stderr, "You don't have \"r\" rights\n");
 		closeFailure();
 		}
 
@@ -112,7 +125,7 @@ int main(int argc, char* argv[]) {
 	if (debug>1) printf("Initial euid: %i, uid: %i\n", euid, uid);
 
 	//Check num of params
-	if (argc != 3) {
+	if (argc != 3) { // • Existence of a malformed entry
 		if (debug) fprintf(stderr, "\nInput:   ./get <source> <destination>\n\n");
 		exit(1);
 	}
@@ -122,19 +135,25 @@ int main(int argc, char* argv[]) {
 
 	src = getSource(srcPath);
 
-	struct stat aclStat, srcStat;
+	struct stat aclStat, dstStat, srcStat;
 	if (lstat(aclPath, &aclStat) == -1) {
 		if (debug) fprintf(stderr, "lstat says no to your acl\n");
-		closeFailure();
+		// closeFailure();
 	}
+
 	if (lstat(srcPath, &srcStat) == -1) {
 		if (debug) fprintf(stderr, "lstat says no to your src\n");
-		closeFailure();
+		// closeFailure();
 	}
 
-	dst = (dstPath, aclStat);
+	if (lstat(dstPath, &dstStat) == -1) {
+		if (debug) fprintf(stderr, "lstat says no to your dst\n");
+		// closeFailure();
+	}
 
-	if S_ISLNK(aclStat.st_mode) {
+	dst = getDst(dstPath, aclStat);
+
+	if S_ISLNK(aclStat.st_mode) { // • ACL file is a symbolic link
 		if (debug) fprintf(stderr, "acl file is a symbolic link\n");
 		closeFailure();
 	}
@@ -147,8 +166,18 @@ int main(int argc, char* argv[]) {
 	(aclStat.st_mode & S_IXGRP) ||
 	(aclStat.st_mode & S_IROTH) ||
 	(aclStat.st_mode & S_IWOTH) ||
-	(aclStat.st_mode & S_IXOTH)) {
+	(aclStat.st_mode & S_IXOTH)) { // • Protection for acl allows any world or group access
 	if (debug) fprintf(stderr, "acl file should not give world/group access\n");
+		closeFailure();
+	}
+
+	if (euidaccess(dstPath, W_OK)) { // • euid has write access to dst
+		if (debug) printf("euid doesn't have write access to dst: %s\n",  strerror(errno));
+		closeFailure();
+	}
+
+	if (dstStat.st_uid != geteuid()) { // • the euid process owns dst
+		if (debug) fprintf(stderr, "Source not owned by euid\n");
 		closeFailure();
 	}
 
@@ -158,30 +187,24 @@ int main(int argc, char* argv[]) {
 	}
 	if (debug>1) printf("geteuid() after seteuid() to uid: %i\n", geteuid());
 
-	if (!euidaccess(srcPath, R_OK)) {
-		if (debug) fprintf(stderr, "eiud doesn't have read acces to src\n");
-		closeFailure();
-	}
-	if (!euidaccess(dstPath, W_OK)) {
-		if (debug) fprintf(stderr, "uid cannot write to dst\n");
-		closeFailure();
-	}
-
-	if (!euidaccess(aclPath, R_OK)) {
+	if (!euidaccess(aclPath, W_OK)) { // • acl exists and indicates write access for the real uid
 		if (debug) fprintf(stderr, "uid cannot write to acl\n");
 		closeFailure();
-
 	}
+
+	if (!euidaccess(srcPath, R_OK)) { // • real uid may read src
+		if (debug) fprintf(stderr, "uid cannot write to src\n");
+		closeFailure();
+	}
+
+
+
 	if (seteuid(euid) < 0) {
 		if (debug) fprintf(stderr, "seteuid(euid) failed\n");
 		closeFailure();
 	}
 	if (debug>1) printf("geteuid() after seteuid() to euid: %i\n", geteuid());
 
-	if (srcStat.st_uid != geteuid()) {
-		if (debug) fprintf(stderr, "Source not owned by euid\n");
-		closeFailure();
-	}
 
 	char* username;
 	struct passwd* pw = getpwuid(uid);
@@ -194,10 +217,14 @@ int main(int argc, char* argv[]) {
 		closeFailure();
 	}
 
+	printf("aclPath: %s\n", aclPath);
 	readAcl(aclPath, username);
-
-	int sentBytes = sendfile(dst, src, NULL, aclStat.st_size*sizeof(int));
-	if (sentBytes == -1) printf("sendfile error: %s\n", strerror(errno));
+	printf("src: %i\tdst: %i\n", src, dst);
+	int sentBytes = sendfile(src, dst, NULL, aclStat.st_size*sizeof(int));
+	if (sentBytes == -1) {
+		printf("sendfile error: %s\n", strerror(errno));
+		closeFailure();
+	}
 	else if (debug>1) printf("sendfile: %i\n", sentBytes);
 
 	closeSuccess();

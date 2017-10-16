@@ -157,7 +157,7 @@ int main(int argc, char* argv[]) {
 	if (debug>1) printf("geteuid() after seteuid() to uid: %i\n", geteuid());
 
 	if (!euidaccess(srcPath, R_OK)) { // • euid has read access to src
-		if (debug) fprintf(stderr, "eiud doesn't have read acces to src\n");
+		if (debug) fprintf(stderr, "euid doesn't have read access to src\n");
 		closeFailure();
 	}
 	if (!euidaccess(dstPath, W_OK)) { // • real uid  can write to dst
@@ -195,7 +195,10 @@ int main(int argc, char* argv[]) {
 	readAcl(aclPath, username);
 
 	int sentBytes = sendfile(dst, src, NULL, aclStat.st_size*sizeof(int));
-	if (sentBytes == -1) printf("sendfile error: %s\n", strerror(errno));
+	if (sentBytes == -1) {
+		printf("sendfile error: %s\n", strerror(errno));
+		closeFailure();
+	}
 	else if (debug>1) printf("sendfile: %i\n", sentBytes);
 
 	closeSuccess();
