@@ -65,9 +65,9 @@ void closeFailure() {
 
 
 int getSrc(char* path) {
-	int fd = open(path, O_WRONLY | O_CREAT, 0600);
+	int fd = open(path, O_RDONLY);
 	if (fd == -1) {
-		if (debug) fprintf(stderr, "src error: %s\n", strerror(errno));
+		if (debug) fprintf(stderr, "dst error: %s\n", strerror(errno));
 		closeFailure();
 	}
 
@@ -75,10 +75,10 @@ int getSrc(char* path) {
 }
 
 
-int getDst(char* path, struct stat srcPath) {
-	int fd = open(path, O_RDONLY);
+int getDst(char* path) {
+	int fd = open(path, O_WRONLY | O_CREAT, 0600);
 	if (fd == -1) {
-		if (debug) fprintf(stderr, "dst error: %s\n", strerror(errno));
+		if (debug) fprintf(stderr, "src error: %s\n", strerror(errno));
 		closeFailure();
 	}
 
@@ -119,10 +119,11 @@ int main(int argc, char* argv[]) {
   char* srcPath = argv[1];
 	char* dstPath = argv[2];
 	char aclPath[4096]; //max length of path in Linux
+	int dstExists = 0;
 
-	const uid_t uid = getuid();
+	const uid_t ruid = getuid();
 	const uid_t euid = geteuid();
-	if (debug>1) printf("Initial euid: %i, uid: %i\n", euid, uid);
+	if (debug>1) printf("Initial euid: %i, ruid: %i\n", euid, ruid);
 
 	//Check num of params
 	if (argc != 3) { // • Existence of a malformed entry
@@ -138,20 +139,24 @@ int main(int argc, char* argv[]) {
 	struct stat aclStat, dstStat, srcStat;
 	if (lstat(aclPath, &aclStat) == -1) {
 		if (debug) fprintf(stderr, "lstat says no to your acl\n");
-		// closeFailure();
+		closeFailure();
 	}
 
 	if (lstat(srcPath, &srcStat) == -1) {
 		if (debug) fprintf(stderr, "lstat says no to your src\n");
-		// closeFailure();
+		closeFailure();
 	}
 
 	if (lstat(dstPath, &dstStat) == -1) {
-		if (debug) fprintf(stderr, "lstat says no to your dst\n");
+		// if (debug) fprintf(stderr, "lstat says no to your dst\n");
 		// closeFailure();
+		if (debug) printf("dst does not exist\n");
+	}
+	else {
+		dstExists = 1;
 	}
 
-	dst = getDst(dstPath, aclStat);
+	dst = getDst(dstPath);
 
 	if S_ISLNK(aclStat.st_mode) { // • ACL file is a symbolic link
 		if (debug) fprintf(stderr, "acl file is a symbolic link\n");
@@ -176,24 +181,35 @@ int main(int argc, char* argv[]) {
 		closeFailure();
 	}
 
-	if (dstStat.st_uid != geteuid()) { // • the euid process owns dst
-		if (debug) fprintf(stderr, "Source not owned by euid\n");
-		closeFailure();
+	if (dstExists) {
+		char answer;
+		while (answer != 'y' && answer != 'Y') {
+			printf("File exists. Overwrite? (y/n): ");
+			scanf(" %c", &answer);
+			if (answer == 'n' || answer == 'N') closeFailure();
+			else printf("Not a valid input\n\n");
+		}
+	} else {
+		if (dstStat.st_uid != geteuid()) { // • the euid process owns dst
+			if (debug) fprintf(stderr, "dst not owned by euid\n");
+			printf("dstStat.st_uid: %i\t geteuid(): %i\n", dstStat.st_uid, geteuid());
+			closeFailure();
+		}
 	}
 
-	if (seteuid(uid) < 0) {
-		if (debug) fprintf(stderr, "seteuid(uid) failed\n");
+	if (seteuid(ruid) < 0) {
+		if (debug) fprintf(stderr, "seteuid(ruid) failed\n");
 		closeFailure();
 	}
-	if (debug>1) printf("geteuid() after seteuid() to uid: %i\n", geteuid());
+	if (debug>1) printf("geteuid() after seteuid() to ruid: %i\n", geteuid());
 
 	if (!euidaccess(aclPath, W_OK)) { // • acl exists and indicates write access for the real uid
-		if (debug) fprintf(stderr, "uid cannot write to acl\n");
+		if (debug) fprintf(stderr, "ruid cannot write to acl\n");
 		closeFailure();
 	}
 
 	if (!euidaccess(srcPath, R_OK)) { // • real uid may read src
-		if (debug) fprintf(stderr, "uid cannot write to src\n");
+		if (debug) fprintf(stderr, "ruid cannot write to src\n");
 		closeFailure();
 	}
 
@@ -207,7 +223,7 @@ int main(int argc, char* argv[]) {
 
 
 	char* username;
-	struct passwd* pw = getpwuid(uid);
+	struct passwd* pw = getpwuid(ruid);
 	if (pw) {
 		username = pw->pw_name;
 		if (debug>1) printf("Your username is: %s\n", username);
@@ -220,7 +236,7 @@ int main(int argc, char* argv[]) {
 	printf("aclPath: %s\n", aclPath);
 	readAcl(aclPath, username);
 	printf("src: %i\tdst: %i\n", src, dst);
-	int sentBytes = sendfile(src, dst, NULL, aclStat.st_size*sizeof(int));
+	int sentBytes = sendfile(dst, src, NULL, srcStat.st_size*sizeof(int));
 	if (sentBytes == -1) {
 		printf("sendfile error: %s\n", strerror(errno));
 		closeFailure();

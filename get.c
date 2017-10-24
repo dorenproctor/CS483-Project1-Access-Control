@@ -64,7 +64,7 @@ int getSrc(char* path) {
 }
 
 
-int getDst(char* path, struct stat srcPath) {
+int getDst(char* path) {
 	int fd = open(path, O_WRONLY | O_CREAT, 0600);
 	if (fd == -1) {
 		if (debug) fprintf(stderr, "dst error: %s\n", strerror(errno));
@@ -114,9 +114,9 @@ int main(int argc, char* argv[]) {
 	char* dstPath = argv[2];
 	char aclPath[4096]; //max length of path in Linux
 
-	const uid_t uid = getuid();
+	const uid_t ruid = getuid();
 	const uid_t euid = geteuid();
-	if (debug>1) printf("Initial euid: %i, uid: %i\n", euid, uid);
+	if (debug>1) printf("Initial euid: %i, ruid: %i\n", euid, ruid);
 
 
 	strcpy(aclPath, srcPath);
@@ -134,7 +134,7 @@ int main(int argc, char* argv[]) {
 		closeFailure();
 	}
 
-	dst = getDst(dstPath, aclStat);
+	dst = getDst(dstPath);
 
 	if S_ISLNK(aclStat.st_mode) { // • ACL file is a symbolic link
 		if (debug) fprintf(stderr, "acl file is a symbolic link\n");
@@ -154,23 +154,24 @@ int main(int argc, char* argv[]) {
 		closeFailure();
 	}
 
-	if (seteuid(uid) < 0) { // change euid to real uid
-		if (debug) fprintf(stderr, "seteuid(uid) failed\n");
+	if (seteuid(ruid) < 0) { // change euid to ruid
+		if (debug) fprintf(stderr, "seteuid(ruid) failed\n");
 		closeFailure();
 	}
-	if (debug>1) printf("geteuid() after seteuid() to uid: %i\n", geteuid());
+	if (debug>1) printf("geteuid() after seteuid() to ruid: %i\n", geteuid());
 
 	if (!euidaccess(srcPath, R_OK)) { // • euid has read access to src
 		if (debug) fprintf(stderr, "euid doesn't have read access to src\n");
 		closeFailure();
 	}
-	if (!euidaccess(dstPath, W_OK)) { // • real uid  can write to dst
-		if (debug) fprintf(stderr, "uid cannot write to dst\n");
+
+	if (!euidaccess(dstPath, W_OK)) { // • ruid can write to dst
+		if (debug) fprintf(stderr, "ruid cannot write to dst\n");
 		closeFailure();
 	}
 
-	if (!euidaccess(aclPath, R_OK)) { // • acl exists and indicates read access for the real uid
-		if (debug) fprintf(stderr, "uid cannot write to acl\n");
+	if (!euidaccess(aclPath, R_OK)) { // • acl exists and indicates read access for the ruid
+		if (debug) fprintf(stderr, "ruid cannot write to acl\n");
 		closeFailure();
 
 	}
@@ -186,7 +187,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	char* username;
-	struct passwd* pw = getpwuid(uid);
+	struct passwd* pw = getpwuid(ruid);
 	if (pw) {
 		username = pw->pw_name;
 		if (debug>1) printf("Your username is: %s\n", username);
@@ -198,12 +199,12 @@ int main(int argc, char* argv[]) {
 
 	readAcl(aclPath, username);
 
-	int sentBytes = sendfile(dst, src, NULL, aclStat.st_size*sizeof(int));
+	int sentBytes = sendfile(src, dst, NULL, srcStat.st_size*sizeof(int));
 	if (sentBytes == -1) {
 		printf("sendfile error: %s\n", strerror(errno));
 		closeFailure();
 	}
-	else if (debug>1) printf("sendfile: %i\n", sentBytes);
+	else if (debug>1) printf("Sending %i bytes of data\n", sentBytes);
 
 	closeSuccess();
 }
