@@ -189,7 +189,6 @@ int main(int argc, char* argv[]) {
 			if (answer == 'n' || answer == 'N') closeFailure();
 			else printf("Not a valid input\n\n");
 		}
-	} else {
 		if (dstStat.st_uid != geteuid()) { // • the euid process owns dst
 			if (debug) fprintf(stderr, "dst not owned by euid\n");
 			printf("dstStat.st_uid: %i\t geteuid(): %i\n", dstStat.st_uid, geteuid());
