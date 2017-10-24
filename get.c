@@ -113,6 +113,7 @@ int main(int argc, char* argv[]) {
 	char* srcPath = argv[1];
 	char* dstPath = argv[2];
 	char aclPath[4096]; //max length of path in Linux
+	int dstExists = 0;
 
 	const uid_t ruid = getuid();
 	const uid_t euid = geteuid();
@@ -124,7 +125,7 @@ int main(int argc, char* argv[]) {
 
 	src = getSrc(srcPath);
 
-	struct stat aclStat, srcStat;
+	struct stat aclStat, srcStat, dstStat;
 	if (lstat(aclPath, &aclStat) == -1) {
 		if (debug) fprintf(stderr, "lstat says no to your acl\n");
 		closeFailure();
@@ -132,6 +133,13 @@ int main(int argc, char* argv[]) {
 	if (lstat(srcPath, &srcStat) == -1) {
 		if (debug) fprintf(stderr, "lstat says no to your src\n");
 		closeFailure();
+	}
+
+	if (lstat(dstPath, &dstStat) == -1) {
+		if (debug) printf("dst does not exist\n");
+	}
+	else {
+		dstExists = 1;
 	}
 
 	dst = getDst(dstPath);
@@ -197,9 +205,20 @@ int main(int argc, char* argv[]) {
 		closeFailure();
 	}
 
+	if (dstExists) {
+		char answer;
+		while (1) {
+			printf("File exists. Overwrite? (y/n): ");
+			scanf(" %c", &answer);
+			if (answer == 'n' || answer == 'N') closeFailure();
+			if (answer != 'y' || answer != 'Y') break;
+			else printf("Not a valid input\n\n");
+		}
+	}
+	if (debug>1) printf("aclPath: %s\n", aclPath);
 	readAcl(aclPath, username);
-
-	int sentBytes = sendfile(src, dst, NULL, srcStat.st_size*sizeof(int));
+	if (debug>1) printf("src: %i\tdst: %i\n", src, dst);
+	int sentBytes = sendfile(dst, src, NULL, srcStat.st_size*sizeof(int));
 	if (sentBytes == -1) {
 		printf("sendfile error: %s\n", strerror(errno));
 		closeFailure();

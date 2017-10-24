@@ -183,16 +183,12 @@ int main(int argc, char* argv[]) {
 
 	if (dstExists) {
 		char answer;
-		while (answer != 'y' && answer != 'Y') {
+		while (1) {
 			printf("File exists. Overwrite? (y/n): ");
 			scanf(" %c", &answer);
 			if (answer == 'n' || answer == 'N') closeFailure();
+			else if (answer != 'y' || answer != 'Y') break;
 			else printf("Not a valid input\n\n");
-		}
-		if (dstStat.st_uid != geteuid()) { // • the euid process owns dst
-			if (debug) fprintf(stderr, "dst not owned by euid\n");
-			printf("dstStat.st_uid: %i\t geteuid(): %i\n", dstStat.st_uid, geteuid());
-			closeFailure();
 		}
 	}
 
@@ -232,9 +228,9 @@ int main(int argc, char* argv[]) {
 		closeFailure();
 	}
 
-	printf("aclPath: %s\n", aclPath);
+	if (debug>1) printf("aclPath: %s\n", aclPath);
 	readAcl(aclPath, username);
-	printf("src: %i\tdst: %i\n", src, dst);
+	if (debug>1) printf("src: %i\tdst: %i\n", src, dst);
 	int sentBytes = sendfile(dst, src, NULL, srcStat.st_size*sizeof(int));
 	if (sentBytes == -1) {
 		printf("sendfile error: %s\n", strerror(errno));
