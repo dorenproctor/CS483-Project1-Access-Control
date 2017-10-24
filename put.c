@@ -64,7 +64,7 @@ void closeFailure() {
 }
 
 
-int getSource(char* path) {
+int getSrc(char* path) {
 	int fd = open(path, O_WRONLY | O_CREAT, 0600);
 	if (fd == -1) {
 		if (debug) fprintf(stderr, "src error: %s\n", strerror(errno));
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) {
 	strcpy(aclPath, srcPath);
 	strcat(aclPath, ".access");
 
-	src = getSource(srcPath);
+	src = getSrc(srcPath);
 
 	struct stat aclStat, dstStat, srcStat;
 	if (lstat(aclPath, &aclStat) == -1) {

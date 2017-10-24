@@ -1,4 +1,4 @@
-	//Author: Doren Proctor
+//Author: Doren Proctor
 //Created for CS483 - Appled Systems Security
 //Due Oct 13, 2017
 
@@ -25,8 +25,11 @@
 // • The effective uid of the executing process has read access to source, the file source.access exists and indicates read access for the real uid of the executing process,
 // • The real uid of the executing process can write the file destination.
 
+
+//in get the src is protected; in put, the dst is protected
+
 // global variables
-int debug = 0;
+int debug = 2; //0, 1, or 2 depending on how much feedback you want
 FILE* acl; //global to make closing them easier
 int src;
 int dst;
@@ -50,7 +53,7 @@ void closeFailure() {
 }
 
 
-int getSource(char* path) {
+int getSrc(char* path) {
 	int fd = open(path, O_RDONLY);
 	if (fd == -1) {
 		if (debug) fprintf(stderr, "src error: %s\n", strerror(errno));
@@ -101,6 +104,12 @@ char readAcl(char* path, char* username) { //returns your permission from acl
 }
 
 int main(int argc, char* argv[]) {
+		//Check num of params
+		if (argc != 3) { // • Existence of a malformed entry
+			if (debug) fprintf(stderr, "\nInput:   ./get <source> <destination>\n\n");
+			exit(1);
+		}
+
 	char* srcPath = argv[1];
 	char* dstPath = argv[2];
 	char aclPath[4096]; //max length of path in Linux
@@ -109,16 +118,11 @@ int main(int argc, char* argv[]) {
 	const uid_t euid = geteuid();
 	if (debug>1) printf("Initial euid: %i, uid: %i\n", euid, uid);
 
-	//Check num of params
-	if (argc != 3) { // • Existence of a malformed entry
-		if (debug) fprintf(stderr, "\nInput:   ./get <source> <destination>\n\n");
-		exit(1);
-	}
 
 	strcpy(aclPath, srcPath);
 	strcat(aclPath, ".access");
 
-	src = getSource(srcPath);
+	src = getSrc(srcPath);
 
 	struct stat aclStat, srcStat;
 	if (lstat(aclPath, &aclStat) == -1) {
