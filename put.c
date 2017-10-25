@@ -21,26 +21,13 @@
 // • Protection for basename.ext.access allows any world or group access (via the standard UNIX file protections) (Y)
 
 // Access is allowed only when all of these are true:
-// • the effective uid of the executing process owns destination (Y)
-// • the effective uid of the executing process has write access to the file destination (Y)
-// • the file destination.access exists and indicates write access for the real uid of the executing process (Y)
-// • the real uid of the executing process may read source (Y)
-
-/*
-~~~~~~~~~~
-If destination already exists, the user is queried before the file is overwritten.
-
-If destination is overwritten, the owner and
-protections of the file are not changed by the write. If destination does not exist, it is created with the
-owner and group corresponding to the effective user of the executing process and their default group. (See
-the manual page for getpwnam().) The file protection is set to 400.
-
-fstat instead of lstat?
-~~~~~~~~~~
-*/
+// • The effective uid of the executing process owns destination
+// • The effective uid of the executing process has write access to the file destination
+// • The file destination.access exists and indicates write access for the real uid of the executing process
+// • The real uid of the executing process may read source
 
 
-int debug = 2;
+int debug = 0; //0, 1, or 2 depending on how much feedback you want
 FILE* acl; //global to make closing them easier
 int src;
 int dst;
@@ -70,18 +57,16 @@ int getSrc(char* path) {
 		if (debug) fprintf(stderr, "dst error: %s\n", strerror(errno));
 		closeFailure();
 	}
-
 	return fd;
 }
 
 
 int getDst(char* path) {
-	int fd = open(path, O_WRONLY | O_CREAT, 0600);
+	int fd = open(path, O_WRONLY | O_CREAT, 0400);
 	if (fd == -1) {
 		if (debug) fprintf(stderr, "src error: %s\n", strerror(errno));
 		closeFailure();
 	}
-
 	return fd;
 }
 
@@ -162,10 +147,12 @@ int main(int argc, char* argv[]) {
 		if (debug) fprintf(stderr, "acl file is a symbolic link\n");
 		closeFailure();
 	}
+
 	if (!S_ISREG(srcStat.st_mode)) {
 		if (debug) fprintf(stderr, "src is not an ordinary file\n");
 		closeFailure();
 	}
+
 	if ((aclStat.st_mode & S_IRGRP) ||
 	(aclStat.st_mode & S_IWGRP) ||
 	(aclStat.st_mode & S_IXGRP) ||
@@ -208,14 +195,11 @@ int main(int argc, char* argv[]) {
 		closeFailure();
 	}
 
-
-
 	if (seteuid(euid) < 0) {
 		if (debug) fprintf(stderr, "seteuid(euid) failed\n");
 		closeFailure();
 	}
 	if (debug>1) printf("geteuid() after seteuid() to euid: %i\n", geteuid());
-
 
 	char* username;
 	struct passwd* pw = getpwuid(ruid);
@@ -231,6 +215,7 @@ int main(int argc, char* argv[]) {
 	if (debug>1) printf("aclPath: %s\n", aclPath);
 	readAcl(aclPath, username);
 	if (debug>1) printf("src: %i\tdst: %i\n", src, dst);
+	
 	int sentBytes = sendfile(dst, src, NULL, srcStat.st_size*sizeof(int));
 	if (sentBytes == -1) {
 		printf("sendfile error: %s\n", strerror(errno));

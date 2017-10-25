@@ -22,14 +22,15 @@
 
 // Access allowed only when all of these are true:
 // • Source is owned by the effective uid of the executing process,
-// • The effective uid of the executing process has read access to source, the file source.access exists and indicates read access for the real uid of the executing process,
+// • The effective uid of the executing process has read access to source,
+// • the file source.access exists and indicates read access for the real uid of the executing process,
 // • The real uid of the executing process can write the file destination.
 
+// In get the src is protected; in put, the dst is protected
 
-//in get the src is protected; in put, the dst is protected
 
 // global variables
-int debug = 2; //0, 1, or 2 depending on how much feedback you want
+int debug = 0; //0, 1, or 2 depending on how much feedback you want
 FILE* acl; //global to make closing them easier
 int src;
 int dst;
@@ -59,18 +60,16 @@ int getSrc(char* path) {
 		if (debug) fprintf(stderr, "src error: %s\n", strerror(errno));
 		closeFailure();
 	}
-
 	return fd;
 }
 
 
 int getDst(char* path) {
-	int fd = open(path, O_WRONLY | O_CREAT, 0600);
+	int fd = open(path, O_WRONLY | O_CREAT, 0400);
 	if (fd == -1) {
 		if (debug) fprintf(stderr, "dst error: %s\n", strerror(errno));
 		closeFailure();
 	}
-
 	return fd;
 }
 
@@ -118,7 +117,6 @@ int main(int argc, char* argv[]) {
 	const uid_t ruid = getuid();
 	const uid_t euid = geteuid();
 	if (debug>1) printf("Initial euid: %i, ruid: %i\n", euid, ruid);
-
 
 	strcpy(aclPath, srcPath);
 	strcat(aclPath, ".access");
@@ -181,8 +179,8 @@ int main(int argc, char* argv[]) {
 	if (!euidaccess(aclPath, R_OK)) { // • acl exists and indicates read access for the ruid
 		if (debug) fprintf(stderr, "ruid cannot write to acl\n");
 		closeFailure();
-
 	}
+
 	if (seteuid(euid) < 0) { // change euid back to euid
 		if (debug) fprintf(stderr, "seteuid(euid) failed\n");
 		closeFailure();
@@ -215,9 +213,11 @@ int main(int argc, char* argv[]) {
 			else printf("Not a valid input\n\n");
 		}
 	}
+
 	if (debug>1) printf("aclPath: %s\n", aclPath);
 	readAcl(aclPath, username);
 	if (debug>1) printf("src: %i\tdst: %i\n", src, dst);
+
 	int sentBytes = sendfile(dst, src, NULL, srcStat.st_size*sizeof(int));
 	if (sentBytes == -1) {
 		printf("sendfile error: %s\n", strerror(errno));
