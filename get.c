@@ -1,6 +1,6 @@
 //Author: Doren Proctor
-//Created for CS483 - Appled Systems Security
-//Due Oct 13, 2017
+//Created for CS483 - Applied Systems Security
+//Due Oct 23, 2017
 
 #define _GNU_SOURCE
 #include <unistd.h>

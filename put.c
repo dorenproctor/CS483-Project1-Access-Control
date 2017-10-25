@@ -1,6 +1,6 @@
 //Author: Doren Proctor
-//Created for CS483 - Appled Systems Security
-//Due Oct 13, 2017
+//Created for CS483 - Applied Systems Security
+//Due Oct 23, 2017
 
 #define _GNU_SOURCE
 #include <unistd.h>
@@ -14,11 +14,11 @@
 #include <sys/sendfile.h>
 
 // Fails *silently* when any of these are true:
-// • ACL file does not exist (Y)
-// • ACL file is a symbolic link (Y)
-// • Existence of a malformed entry (Y)
-// • basename.ext is not an ordinary file (Y)
-// • Protection for basename.ext.access allows any world or group access (via the standard UNIX file protections) (Y)
+// • ACL file does not exist
+// • ACL file is a symbolic link
+// • Existence of a malformed entry
+// • basename.ext is not an ordinary file
+// • Protection for basename.ext.access allows any world or group access (via the standard UNIX file protections)
 
 // Access is allowed only when all of these are true:
 // • The effective uid of the executing process owns destination
@@ -215,7 +215,7 @@ int main(int argc, char* argv[]) {
 	if (debug>1) printf("aclPath: %s\n", aclPath);
 	readAcl(aclPath, username);
 	if (debug>1) printf("src: %i\tdst: %i\n", src, dst);
-	
+
 	int sentBytes = sendfile(dst, src, NULL, srcStat.st_size*sizeof(int));
 	if (sentBytes == -1) {
 		printf("sendfile error: %s\n", strerror(errno));
