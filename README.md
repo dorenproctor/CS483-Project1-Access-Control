@@ -41,3 +41,4 @@ Note that the type of file should not matter.
 ## Notes ##  
 • This program functions by temporarily setting the effective user id (the user) to the real user id (the admin) in order to check the properties of the files and then quickly change back before moving the file.  
 • In `get` the source is protected. In `put`, the destination is protected  
+• If the file does not already exist in the destination, it will be created with permission 0400.
