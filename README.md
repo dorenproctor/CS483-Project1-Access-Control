@@ -11,7 +11,7 @@ This program can be used to give users access to files they do not have regular 
 
 ## Example usage ##  
 `./get somePath/src.ext dst.ext`  
-`./put src/ext somePath/dst.ext`  
+`./put src.ext somePath/dst.ext`  
 
 Note that the type of file should not matter.  
 
